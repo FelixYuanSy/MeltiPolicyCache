@@ -35,36 +35,51 @@ template <typename Key, typename Value>
 class LruCache : public MeltiCache::ICachePolicy<Key, Value> {
 private:
   using LruNodeType = LruNode<Key, Value>;
-  using NodePtr = std::shared_ptr<
-      LruNodeType>; // 存入指针，防止移动node时候产生大量的开销，采用指针之后，只需要移动指针
+  // 存入指针，防止移动node时候产生大量的开销，采用指针之后，只需要移动指针
+  using NodePtr = std::shared_ptr<LruNodeType>;
   using LruMap = std::unordered_map<Key, NodePtr>;
 
 public:
   LruCache(int capacity) : capacity_(capacity) { initializeList(); }
 
-  void put(Key key, Value value) {
+  void put(Key key, Value value) override {
     if (capacity_ <= 0)
       return;
-    auto it =
-        map_.find(); // 如果在map里找到了，更新value和把位置更新到列表最后面
+    // 如果在map里找到了，更新value和把位置更新到列表最后面
+
+    auto it = map_.find();
     if (it != map_.end()) {
-      updateExistingNode(it->second,
-                         value); // 调换位置到最后并且更新value, it->second 为
-                                 // LruPtr,并且传入新value
+      updateExistingNode(it->second, value);
+      // 调换位置到最后并且更新value, it->second为LruPtr,并且传入新value
 
     } else {
-      NodePtr node = std::make_shared<LruNodeType>(key, value);
+      // 添加节点到map和node
+      addNewNode(key, value);
     }
   }
 
-  void get(Key key, Value &value) override {}
+  bool get(Key key, Value &value) override {
+    auto it = map_.find(key);
+    if (it != map_.end()) {
 
-  Value get(Key key) override {}
+      moveToMostRecent(it->second);
+      value = it->second->getValue();
+      return true;
+    }
+    return false;
+  }
+
+  Value get(Key key) override 
+  {
+    Value value{};
+    get(key,value);
+    return value;
+  }
 
 private:
   void initializeList() {
-    dummyHead_ = std::make_shared<LruNodeType>(
-        Key(), Value()); // Key(),Value()写法：告诉编译器Key和Value的默认值
+    dummyHead_ = std::make_shared<LruNodeType>(Key(), Value());
+    // Key(),Value()写法：告诉编译器Key和Value的默认值
     dummyTail_ = std::make_shared<LruNodeType>(Key(), Value());
     dummyHead_->next_ = dummyTail_;
     dummyTail_->pre_ = dummyHead_;
@@ -100,6 +115,22 @@ private:
     node->next_ = dummyTail_;
     dummyTail_->pre_->next_ = node;
     dummyTail_->pre_ = node;
+  }
+
+  void addNewNode(Key &key, Value &value) {
+    // 如果map长度比容量大或者等于，那么就要把最久没访问的删掉
+    if (map_.size() >= capacity_) {
+      evictLeastRecent();
+    }
+    NodePtr newnode = std::make_shared<LruNodeType>(key, value);
+    insertNode(newnode);
+    map_[key] = newnode;
+  }
+
+  void evictLeastRecent() {
+    auto node = dummyHead_->next_;
+    removeNode(node);
+    map_.erase(node->getKey());
   }
 
 private:
