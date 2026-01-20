@@ -1,82 +1,111 @@
 #include "ICachePolicy.h"
+#include <cstddef>
 #include <list>
 #include <memory>
+#include <mutex>
 #include <unordered_map>
 
-template<typename Key, typename Value> class LruCache;
-template<typename Key,typename Value>
-class LruNode {
-    
-   private:
-        Key key_;
-        Value value_;
-        size_t accessTimes_;        //节点访问次数
-        std::weak_ptr<LruNode> pre_;    //前向节点使用weak防止循环引用
-        std::shared_ptr<LruNode> next_; 
-    
-    public:
-        LruNode(Key key,Value value):key_(key),value_(value),accessTimes_(1)
-        {}
-        
-        Key getKey()
-        {
-            return key_;
-        }
+template <typename Key, typename Value> class LruCache;
+template <typename Key, typename Value> class LruNode {
 
-        Value getValue()
-        {
-            return value_;
-        }
+private:
+  Key key_;                    // 用来和map中协同找到Node的索引
+  Value value_;                // value是所携带的内容
+  size_t accessTimes_;         // 节点访问次数
+  std::weak_ptr<LruNode> pre_; // 前向节点使用weak防止循环引用
+  std::shared_ptr<LruNode> next_;
 
-        size_t getAccessCount()
-        {
-            return accessTimes_;
-        }
+public:
+  LruNode(Key key, Value value) : key_(key), value_(value), accessTimes_(1) {}
 
-        void setValue(const Value &value)
-        {
-            value_=value;
-        }
+  Key getKey() { return key_; }
 
-        void incrementAccessCount()
-        {
-            accessTimes_++;
-        }
-        
-        friend class LruCache<Key, Value>;//LRUCache能够访问private里面的pre,next
+  Value getValue() { return value_; }
+
+  size_t getAccessCount() { return accessTimes_; }
+
+  void setValue(const Value &value) { value_ = value; }
+
+  void incrementAccessCount() { accessTimes_++; }
+
+  friend class LruCache<Key, Value>; // LRUCache能够访问private里面的pre,next
 };
 
-template<typename Key,typename Value>
-class LruCache : public MeltiCache::ICachePolicy<Key,Value>
-{
-    private:
-    using LruNodeType = LruNode< Key,  Value>;
-    using NodePtr = std::shared_ptr<LruNodeType>;   //存入指针，防止移动node时候产生大量的开销，采用指针之后，只需要移动指针
-    using LruMap = std::unordered_map<Key,NodePtr>;
-    size_t capacity_;   //要创建Cache的容量
+template <typename Key, typename Value>
+class LruCache : public MeltiCache::ICachePolicy<Key, Value> {
+private:
+  using LruNodeType = LruNode<Key, Value>;
+  using NodePtr = std::shared_ptr<
+      LruNodeType>; // 存入指针，防止移动node时候产生大量的开销，采用指针之后，只需要移动指针
+  using LruMap = std::unordered_map<Key, NodePtr>;
 
-    public:
-    LruCache(int capacity):capacity_(capacity)
-    {
-        initializeList();
+public:
+  LruCache(int capacity) : capacity_(capacity) { initializeList(); }
+
+  void put(Key key, Value value) {
+    if (capacity_ <= 0)
+      return;
+    auto it =
+        map_.find(); // 如果在map里找到了，更新value和把位置更新到列表最后面
+    if (it != map_.end()) {
+      updateExistingNode(it->second,
+                         value); // 调换位置到最后并且更新value, it->second 为
+                                 // LruPtr,并且传入新value
+
+    } else {
+      NodePtr node = std::make_shared<LruNodeType>(key, value);
     }
+  }
 
+  void get(Key key, Value &value) override {}
 
-    private:
+  Value get(Key key) override {}
 
-        void initializeList()
-        {
-            dummyHead_ = std::make_shared<LruNodeType>(Key() ,Value()) ;//Key(),Value()写法是告诉编译器Key和Value的默认值
-            dummyTail_ = std::make_shared<LruNodeType>(Key() ,Value());
-            dummyHead_->next_ = dummyTail_;
-            dummyTail_->pre_ = dummyHead_;
+private:
+  void initializeList() {
+    dummyHead_ = std::make_shared<LruNodeType>(
+        Key(), Value()); // Key(),Value()写法：告诉编译器Key和Value的默认值
+    dummyTail_ = std::make_shared<LruNodeType>(Key(), Value());
+    dummyHead_->next_ = dummyTail_;
+    dummyTail_->pre_ = dummyHead_;
+  }
 
-        }
-    
-    private:
-        NodePtr dummyHead_;
-        NodePtr dummyTail_;
-    
+  void updateExistingNode(NodePtr node, Value &value) {
+    node->setValue(value);
+    moveToMostRecent(node);
+  }
 
-        
+  void moveToMostRecent(NodePtr node) {
+    // 删除当前位置
+    removeNode(node);
+
+    // 插入到最后端
+    insertNode(node);
+  }
+
+  void removeNode(NodePtr node) {
+
+    auto preNode = node->prev_.lock();
+    if (preNode && node->next_) {
+      preNode->next_ = node->next_;
+      node->next_->pre_ = preNode;
+      node->pre_.reset();
+      node->next_ = nullptr;
+    }
+  }
+
+  void insertNode(NodePtr node) {
+
+    node->pre_ = dummyTail_->pre_.lock();
+    node->next_ = dummyTail_;
+    dummyTail_->pre_->next_ = node;
+    dummyTail_->pre_ = node;
+  }
+
+private:
+  NodePtr dummyHead_;
+  NodePtr dummyTail_;
+  size_t capacity_; // 要创建Cache的容量
+  LruMap map_;
+  std::mutex mutex;
 };
