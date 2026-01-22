@@ -47,21 +47,23 @@ public:
       return;
     // 如果在map里找到了，更新value和把位置更新到列表最后面
 
-    auto it = map_.find();
+    auto it = map_.find(key);
     if (it != map_.end()) {
+      std::lock_guard<std::mutex> lock(mutex_);
       updateExistingNode(it->second, value);
       // 调换位置到最后并且更新value, it->second为LruPtr,并且传入新value
+      return;
 
-    } else {
+    } 
       // 添加节点到map和node
       addNewNode(key, value);
-    }
+    
   }
 
   bool get(Key key, Value &value) override {
     auto it = map_.find(key);
     if (it != map_.end()) {
-
+      std::lock_guard<std::mutex> lock(mutex_);
       moveToMostRecent(it->second);
       value = it->second->getValue();
       return true;
@@ -100,7 +102,7 @@ private:
 
   void removeNode(NodePtr node) {
 
-    auto preNode = node->prev_.lock();
+    auto preNode = node->pre_.lock();
     if (preNode && node->next_) {
       preNode->next_ = node->next_;
       node->next_->pre_ = preNode;
@@ -113,7 +115,7 @@ private:
 
     node->pre_ = dummyTail_->pre_.lock();
     node->next_ = dummyTail_;
-    dummyTail_->pre_->next_ = node;
+    dummyTail_->pre_.lock()->next_ = node;
     dummyTail_->pre_ = node;
   }
 
@@ -138,5 +140,5 @@ private:
   NodePtr dummyTail_;
   size_t capacity_; // 要创建Cache的容量
   LruMap map_;
-  std::mutex mutex;
+  std::mutex mutex_;
 };
