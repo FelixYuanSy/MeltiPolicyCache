@@ -1,9 +1,13 @@
 #include "ICachePolicy.h"
+#include <cmath>
 #include <cstddef>
+#include <functional>
 #include <list>
 #include <memory>
 #include <mutex>
 #include <unordered_map>
+#include <vector>
+#include <thread>
 
 template <typename Key, typename Value>
 class LruCache;
@@ -203,4 +207,50 @@ class KLruCache : LruCache<Key, Value> {
     // 历史访问列表,Key和访问次数
     std::unique_ptr<LruCache<Key, size_t>> historyList_;
     std::unordered_map<Key, Value> historyValueMap_; // 未达到访问K次的数据未达到访问K次的数据未达到访问K次的数据
+};
+template<typename Key,typename Value>
+class HashLruCache:public LruCache< Key,  Value>
+{
+
+    private:
+    //采用vector管理分片缓存
+    std::vector<std::unique_ptr<LruCache< Key,  Value>>> slicedCache_;
+    int slicedNumber_;    //切片数量
+    int cacheCapacity_;   //总缓存容量
+
+    public:
+    HashLruCache< Key,  Value>(int cacheCapacity,int slicedNumber):
+    cacheCapacity_(cacheCapacity),
+    slicedCache_(slicedNumber?slicedNumber:std::thread::hardware_concurrency())
+    {
+        int slicedCapacity = std::ceil(cacheCapacity/static_cast<double>(slicedNumber_));//获取每个分片应该的容量
+        for(int i =0; i<slicedNumber_;i++)
+        {
+            slicedCache_.emplace_back(LruCache< Key,  Value>(slicedCapacity));//分片缓存存入vector进行管理
+        }
+    }
+    void put(Key key,Value value) override
+    {
+        size_t slicedIndex = Hash(key)% slicedNumber_;//计算索引，放入哪一个分片中
+        slicedCache_[slicedIndex]->put(key,value);
+    }
+    bool get(Key key,Value &value) override
+    {
+         size_t slicedIndex = Hash(key)% slicedNumber_;//计算索引，在哪一个分片中
+         return slicedCache_[slicedIndex]->get(key,value);
+    }
+    Value get(Key key) override
+    {
+        Value value{};
+        get(key,value);
+        return value;
+
+    }
+
+    private:
+    size_t Hash(Key key)
+    {
+        std::hash<Key> hashFunc;
+        return hashFunc(key);
+    }
 };
