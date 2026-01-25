@@ -1,3 +1,4 @@
+#pragma once
 #include "ICachePolicy.h"
 #include <cmath>
 #include <cstddef>
