@@ -39,9 +39,9 @@ class Freqlist {
     }
 
     void addNode(NodePtr node) {
-        node->pre = tail_->pre;
+        node->pre = tail_->pre_;
         node->next = tail_;
-        tail_->pre.lock()->next = node; // 使用lock()获取shared_ptr
+        tail_->pre.lock()->next_ = node; // 使用lock()获取shared_ptr
         tail_->pre = node;
     }
 
@@ -49,7 +49,7 @@ class Freqlist {
         auto preNode = node->pre_.lock();
         preNode->next_ = node->next_;
         node->next_->pre_ = preNode;
-        node->next = nullptr;
+        node->next_ = nullptr;
     }
     bool isEmpty() {
         return head_->next_ == tail_;
@@ -82,6 +82,7 @@ class LruCache : public MeltiCache::ICachePolicy<Key, Value> {
             updateNodeFrequency(it->second);
             return;
         }
+        putInternal(key,  value);
     }
 
   private:
@@ -121,14 +122,12 @@ void LruCache<Key, Value>::putInternal(Key key,Value value)
         kickOut();
     }
     //放入频数1list，检测minfreq是否是1，如果不是变成1且在1list里增加新node
-    if(minFreq_ != 1)
-    {
-        minFreq_ = 1;
-    }
+   minFreq_ = 1;
+
     auto newNode = std::make_shared<Node>(key,value);
     //add to map
     nodeMap_[key] = newNode;
-    freqToFreqList_.addToFreqList(newNode);
+    addToFreqList(newNode);
     addFreqNum();
 
 }
@@ -186,7 +185,7 @@ void LruCache<Key, Value>::updateMinFreq()
     minFreq_ = INT8_MAX;
     for(auto & pair : freqToFreqList_)
     {
-        if(pair.second&&!pair.second.isEmpty())
+        if(pair.second&&!pair.second->isEmpty())
         {
             std::min(minFreq_,pair.first);
         }
@@ -196,10 +195,7 @@ void LruCache<Key, Value>::updateMinFreq()
 template <typename Key, typename Value>
 void LruCache<Key, Value>::removeFromFreqList(NodePtr node)
 {
-    auto preNode = node->pre_.lock();
-    node->next_->pre_ = preNode;
-    preNode->next_ = node->next_;
-    node->next_ = nullptr;
+    freqToFreqList_[node->freq_]->removeNode(node);
 }
 template <typename Key, typename Value>
 void LruCache<Key, Value>::addToFreqList(NodePtr node)
@@ -212,16 +208,16 @@ void LruCache<Key, Value>::addToFreqList(NodePtr node)
             freqToFreqList_[node->freq_] = new Freqlist<Key, Value>(node->freq_);
             
         }
-        freqToFreqList_[node->freq_].addNode(node);
+        freqToFreqList_[node->freq_]->addNode(node);
     }
 }
 template <typename Key, typename Value>
 void LruCache<Key, Value>::kickOut()
 {
     //找到最小频数head节点后一个删除
-    auto node = freqToFreqList_[minFreq_].getFirstNode();
+    auto node = freqToFreqList_[minFreq_]->getFirstNode();
     removeFromFreqList(node);
-    nodeMap_.erase(node);
+    nodeMap_.erase(node->key_);
     //减小平均频数
     decreaseFreqNum(node->freq_);
 }
