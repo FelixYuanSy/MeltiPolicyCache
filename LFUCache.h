@@ -40,10 +40,10 @@ class Freqlist {
     }
 
     void addNode(NodePtr node) {
-        node->pre = tail_->pre_;
-        node->next = tail_;
-        tail_->pre.lock()->next_ = node; // 使用lock()获取shared_ptr
-        tail_->pre = node;
+        node->pre_ = tail_->pre_;
+        node->next_ = tail_;
+        tail_->pre_.lock()->next_ = node; // 使用lock()获取shared_ptr
+        tail_->pre_ = node;
     }
 
     void removeNode(NodePtr node) {
@@ -56,8 +56,7 @@ class Freqlist {
         return head_->next_ == tail_;
     }
 
-    NodePtr getFirstNode()
-    {
+    NodePtr getFirstNode() {
         return head_->next_;
     }
 
@@ -83,12 +82,28 @@ class LfuCache : public MeltiCache::ICachePolicy<Key, Value> {
             updateNodeFrequency(it->second);
             return;
         }
-        putInternal(key,  value);
+        putInternal(key, value);
+    }
+    bool get(Key key, Value &value) override {
+        auto node = nodeMap_.find(key);
+        if (node != nodeMap_.end()) {
+            getInternal(node->second, value);
+            return true;
+        } else {
+            return false;
+        }
+    }
+
+    Value get(Key key) override
+    {
+        Value value{};
+        get(key,value);
+        return value;
     }
 
   private:
     void getInternal(NodePtr node, Value &value);
-    void putInternal(Key key,Value value);
+    void putInternal(Key key, Value value);
     void updateNodeFrequency(NodePtr node);
     void removeFromFreqList(NodePtr node);
     void addToFreqList(NodePtr node);
@@ -97,7 +112,6 @@ class LfuCache : public MeltiCache::ICachePolicy<Key, Value> {
     void handleOverMaxAverageNum();
     void updateMinFreq();
     void kickOut();
-
 
   private:
     int capacity_;                                                   //缓存总容量
@@ -109,28 +123,24 @@ class LfuCache : public MeltiCache::ICachePolicy<Key, Value> {
     std::unordered_map<int, Freqlist<Key, Value> *> freqToFreqList_; //频数和映射的当前频数freqlist
 };
 template <typename Key, typename Value>
-void LfuCache<Key, Value>::getInternal(NodePtr node,Value&value)
-{
+void LfuCache<Key, Value>::getInternal(NodePtr node, Value &value) {
     value = node->value_;
     updateNodeFrequency(node);
 }
 
 template <typename Key, typename Value>
-void LfuCache<Key, Value>::putInternal(Key key,Value value)
-{
-    if(nodeMap_.size() >= capacity_)
-    {
+void LfuCache<Key, Value>::putInternal(Key key, Value value) {
+    if (nodeMap_.size() >= capacity_) {
         kickOut();
     }
     //放入频数1list，检测minfreq是否是1，如果不是变成1且在1list里增加新node
-   minFreq_ = 1;
+    minFreq_ = 1;
 
-    auto newNode = std::make_shared<Node>(key,value);
+    auto newNode = std::make_shared<Node>(key, value);
     //add to map
     nodeMap_[key] = newNode;
     addToFreqList(newNode);
     addFreqNum();
-
 }
 
 template <typename Key, typename Value>
@@ -139,82 +149,68 @@ void LfuCache<Key, Value>::updateNodeFrequency(NodePtr node) {
     node->freq_++;
     addToFreqList(node);
     //判断前序频数是否变为了空，如果是空的minfreq++
-    if (node->freq_ - 1 == minFreq_ && freqToFreqList_[node->freq_ - 1]->isEmpty())
-    {
+    if (node->freq_ - 1 == minFreq_ && freqToFreqList_[node->freq_ - 1]->isEmpty()) {
         minFreq_++;
     }
     //更新当前总频数和 、 当前平均频数
     addFreqNum();
 }
 template <typename Key, typename Value>
-void LfuCache<Key, Value>::addFreqNum()
-{
+void LfuCache<Key, Value>::addFreqNum() {
     curTotalNum_++;
-    if(nodeMap_.empty())
-    {
+    if (nodeMap_.empty()) {
         curAverageNum_ = 0;
-    }
-    else {
+    } else {
         curAverageNum_ = curTotalNum_ / nodeMap_.size();
-        if(curAverageNum_ > maxAverageNum_)
-        {
+        if (curAverageNum_ > maxAverageNum_) {
             handleOverMaxAverageNum();
         }
     }
 }
 template <typename Key, typename Value>
-void LfuCache<Key, Value>::handleOverMaxAverageNum()
-{
+void LfuCache<Key, Value>::handleOverMaxAverageNum() {
     //用map遍历节点，找到节点后先移除list修改freq后再加入节点
-    for(auto it = nodeMap_.begin();it <= nodeMap_.end();it++)
-    {
-        if(!it->second) continue;
+    for (auto it = nodeMap_.begin(); it != nodeMap_.end(); ++it) {
+        if (!it->second)
+            continue;
         auto node = it->second;
         removeFromFreqList(node);
         node->freq_ -= maxAverageNum_ / 2;
-        if(node->freq_ < 1) node->freq_ = 1;
+        if (node->freq_ < 1)
+            node->freq_ = 1;
         addToFreqList(node);
-
     }
 
     //遍历list查看更新最小频数
     updateMinFreq();
 }
 template <typename Key, typename Value>
-void LfuCache<Key, Value>::updateMinFreq()
-{
+void LfuCache<Key, Value>::updateMinFreq() {
     minFreq_ = INT8_MAX;
-    for(auto & pair : freqToFreqList_)
-    {
-        if(pair.second&&!pair.second->isEmpty())
-        {
-            std::min(minFreq_,pair.first);
+    for (auto &pair : freqToFreqList_) {
+        if (pair.second && !pair.second->isEmpty()) {
+            minFreq_ = std::min(minFreq_, pair.first);
         }
     }
-    if(minFreq_ == INT8_MAX) minFreq_=1;
+    if (minFreq_ == INT8_MAX)
+        minFreq_ = 1;
 }
 template <typename Key, typename Value>
-void LfuCache<Key, Value>::removeFromFreqList(NodePtr node)
-{
+void LfuCache<Key, Value>::removeFromFreqList(NodePtr node) {
     freqToFreqList_[node->freq_]->removeNode(node);
 }
 template <typename Key, typename Value>
-void LfuCache<Key, Value>::addToFreqList(NodePtr node)
-{
-    if(node!=nullptr)
-    {
+void LfuCache<Key, Value>::addToFreqList(NodePtr node) {
+    if (node != nullptr) {
         auto freq = freqToFreqList_.find(node->freq_);
-        if(freq == freqToFreqList_.end())
-        {
+        if (freq == freqToFreqList_.end()) {
             freqToFreqList_[node->freq_] = new Freqlist<Key, Value>(node->freq_);
-            
         }
         freqToFreqList_[node->freq_]->addNode(node);
     }
 }
 template <typename Key, typename Value>
-void LfuCache<Key, Value>::kickOut()
-{
+void LfuCache<Key, Value>::kickOut() {
     //找到最小频数head节点后一个删除
     auto node = freqToFreqList_[minFreq_]->getFirstNode();
     removeFromFreqList(node);
@@ -223,14 +219,11 @@ void LfuCache<Key, Value>::kickOut()
     decreaseFreqNum(node->freq_);
 }
 template <typename Key, typename Value>
-void LfuCache<Key, Value>::decreaseFreqNum(int num)
-{
-    curTotalNum_-=num;
-    if(nodeMap_.empty())
-    {
+void LfuCache<Key, Value>::decreaseFreqNum(int num) {
+    curTotalNum_ -= num;
+    if (nodeMap_.empty()) {
         curAverageNum_ = 0;
-    }
-    else {
+    } else {
         curAverageNum_ = curTotalNum_ / nodeMap_.size();
     }
 }
