@@ -63,16 +63,15 @@ class ArcLru
         moveToFront(node);
         return true;
     }
-    bool addNewNode(Key key,Value &value) 
+    bool addNewNode(Key key, Value &value)
     {
-      if(mainCache_.size()>=capacity_)
-      {
-        evictLeastRecent();
-      }
-      auto newNode = std::make_shared<NodeType>(key,value);
-      mainCache_[key] = newNode;
-      addToFront(newNode);
-      
+        if (mainCache_.size() >= capacity_)
+        {
+            evictLeastRecent();
+        }
+        auto newNode = std::make_shared<NodeType>(key, value);
+        mainCache_[key] = newNode;
+        addToFront(newNode);
     }
     void moveToFront(NodePtr node)
     {
@@ -86,6 +85,13 @@ class ArcLru
         mainHead_->next_->pre_ = node;
         mainHead_->next_ = node;
     }
+    void addToGhostFront(NodePtr node)
+    {
+        node->pre_ = ghostHead_;
+        node->next_ = ghostHead_->next_;
+        ghostHead_->next_->pre_ = node;
+        ghostHead_->next_ = node;
+    }
     void removeNode(NodePtr node)
     {
         auto preNode = node->pre_.lock();
@@ -93,11 +99,21 @@ class ArcLru
         node->next_->pre_ = preNode;
         node->next_ = nullptr;
     }
+    void removeOldestGhost()
+    {
+        auto lastGhostNode = ghostTail_->pre_.lock();
+        removeNode(lastGhostNode);
+        ghostCache_.erase(lastGhostNode->getKey());
+    }
     void evictLeastRecent()
     {
-      auto lastNode = mainTail_->pre_.lock();
+        auto lastNode = mainTail_->pre_.lock();
         removeNode(lastNode);
         mainCache_.erase(lastNode->getKey());
+        if (ghostCache_.size() >= ghostCapacity_)
+        {
+            removeOldestGhost();
+        }
+        addToGhostFront(lastNode);
     }
-    
 };
