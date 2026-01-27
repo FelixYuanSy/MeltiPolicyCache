@@ -42,6 +42,18 @@ class ArcLru
         }
         return addNewNode(key, value);
     }
+    //返回一个bool来让后期的ARC判断是否需要把Node转换到LFU中
+    bool get(Key key, Value& value,bool &NeedTransform)
+    {
+      auto it = mainCache_.find(key);
+      if(it != mainCache_.end())
+      {
+        NeedTransform = updateNodeAccess(it->second);
+        value = it->second->getValue();
+        return true;
+      }
+      return false;
+    }
 
   private:
     void initialize()
@@ -62,6 +74,13 @@ class ArcLru
         node->incrementAccessCount();
         moveToFront(node);
         return true;
+    }
+    bool updateNodeAccess(NodePtr node)
+    {
+      moveToFront(node);
+      node->accessCount_++;
+      return node->getAccessCount() >= transformNeed_;
+      
     }
     bool addNewNode(Key key, Value &value)
     {
