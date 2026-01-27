@@ -42,17 +42,17 @@ class ArcLru
         }
         return addNewNode(key, value);
     }
-    //返回一个bool来让后期的ARC判断是否需要把Node转换到LFU中
-    bool get(Key key, Value& value,bool &NeedTransform)
+    // 返回一个bool来让后期的ARC判断是否需要把Node转换到LFU中
+    bool get(Key key, Value &value, bool &NeedTransform)
     {
-      auto it = mainCache_.find(key);
-      if(it != mainCache_.end())
-      {
-        NeedTransform = updateNodeAccess(it->second);
-        value = it->second->getValue();
-        return true;
-      }
-      return false;
+        auto it = mainCache_.find(key);
+        if (it != mainCache_.end())
+        {
+            NeedTransform = updateNodeAccess(it->second);
+            value = it->second->getValue();
+            return true;
+        }
+        return false;
     }
 
   private:
@@ -77,10 +77,9 @@ class ArcLru
     }
     bool updateNodeAccess(NodePtr node)
     {
-      moveToFront(node);
-      node->accessCount_++;
-      return node->getAccessCount() >= transformNeed_;
-      
+        moveToFront(node);
+        node->accessCount_++;
+        return node->getAccessCount() >= transformNeed_;
     }
     bool addNewNode(Key key, Value &value)
     {
@@ -91,6 +90,7 @@ class ArcLru
         auto newNode = std::make_shared<NodeType>(key, value);
         mainCache_[key] = newNode;
         addToFront(newNode);
+        return true;
     }
     void moveToFront(NodePtr node)
     {
@@ -134,5 +134,6 @@ class ArcLru
             removeOldestGhost();
         }
         addToGhostFront(lastNode);
+        ghostCache_[lastNode->getKey()] = lastNode;  
     }
 };
