@@ -26,11 +26,13 @@ class ArcLru
     NodePtr ghostTail_;
 
   public:
-    ArcLru(int capacity, int transformNeed)
-        : capacity_(capacity), transformNeed_((transformNeed)), ghostCapacity_(capacity)
+    ArcLru(int capacity, int transformNeed, int ghostCapacity)
+        : capacity_(capacity), transformNeed_(transformNeed), ghostCapacity_(ghostCapacity)
     {
         initialize();
     }
+    // 委托构造函数，默认 ghostCapacity = capacity
+    ArcLru(int capacity, int transformNeed) : ArcLru(capacity, transformNeed, capacity) {}
 
     bool put(Key key, Value value)
     {
@@ -53,6 +55,43 @@ class ArcLru
             return true;
         }
         return false;
+    }
+    bool checkGhostCaches(Key key, Value &value)
+    {
+        auto it = ghostCache_.find(key);
+        if (it != ghostCache_.end())
+        {
+            value = it->second->getValue();
+            return true;
+        }
+        return false;
+    }
+    void increaseCapacity() { capacity_++; }
+    void decreaseCapacity()
+    {
+        if (capacity_ > 0) capacity_--;
+        while (mainCache_.size() > capacity_)
+        {
+            evictLeastRecent();
+        }
+    }
+    void remove(Key key)
+    {
+        auto it = mainCache_.find(key);
+        if (it != mainCache_.end())
+        {
+            removeNode(it->second);
+            mainCache_.erase(it);
+        }
+    }
+    void removeFromGhost(Key key)
+    {
+        auto it = ghostCache_.find(key);
+        if (it != ghostCache_.end())
+        {
+            removeNode(it->second);
+            ghostCache_.erase(it);
+        }
     }
 
   private:
@@ -134,6 +173,6 @@ class ArcLru
             removeOldestGhost();
         }
         addToGhostFront(lastNode);
-        ghostCache_[lastNode->getKey()] = lastNode;  
+        ghostCache_[lastNode->getKey()] = lastNode;
     }
 };

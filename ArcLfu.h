@@ -17,7 +17,11 @@ class ArcLfu
                                                                      // frequncy which can match the Key
 
   public:
-    ArcLfu(size_t capacity) : capacity_(capacity), ghostCapacity_(capacity), minFreq_(0) { initializeLists(); }
+    ArcLfu(size_t capacity, size_t ghostCapacity) : capacity_(capacity), ghostCapacity_(ghostCapacity), minFreq_(0)
+    {
+        initializeLists();
+    }
+    ArcLfu(size_t capacity) : ArcLfu(capacity, capacity) {}
 
     bool put(Key key, Value value)
     {
@@ -43,6 +47,38 @@ class ArcLfu
             return true;
         }
         return false;
+    }
+
+    bool checkGhostCaches(Key key, Value& value)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = ghostCache_.find(key);
+        if (it != ghostCache_.end())
+        {
+            value = it->second->getValue();
+            return true;
+        }
+        return false;
+    }
+
+    void decreaseCapacity()
+    {
+        if (capacity_ > 0) capacity_--;
+        while (mainCache_.size() > capacity_)
+        {
+            evictLeastFrequent();
+        }
+    }
+    void increaseCapacity() { ++capacity_; }
+    void removeFromGhost(Key key)
+    {
+        std::lock_guard<std::mutex> lock(mutex_);
+        auto it = ghostCache_.find(key);
+        if (it != ghostCache_.end())
+        {
+            removeNode(it->second);
+            ghostCache_.erase(it);
+        }
     }
 
   private:
