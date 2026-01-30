@@ -1,4 +1,7 @@
 #pragma once
+#include <cstddef>
+#include <memory>
+
 #include "ArcLfu.h"
 #include "ArcLru.h"
 #include "LRUCache.h"
@@ -6,94 +9,73 @@
 template <typename Key, typename Value>
 class ArcCache : public MeltiCache::ICachePolicy<Key, Value>
 {
-  private:
-    size_t capacity_;
-    size_t transformThreshold_;  // 转换所需数量
-    ArcLfu<Key, Value> lfu;
-    ArcLru<Key, Value> lru;
-
   public:
-    ArcCache(size_t capacity, size_t transformThreshold)
+    ArcCache(size_t capacity, size_t transformNeed)
         : capacity_(capacity),
-          transformThreshold_(transformThreshold),
-          lfu(0, capacity),  // LFU 初始容量为 0，但 Ghost 容量需为总容量
-          lru(capacity, transformThreshold, capacity)
+          transformNeed_(transformNeed),
+          lru(std::make_unique<ArcLru<Key, Value>>(capacity, transformNeed)),
+          lfu(std::make_unique<ArcLfu<Key, Value>>(capacity))
+
     {
     }
-
     void put(Key key, Value value) override
     {
-        Value temp;
-        // 1. Check LFU
-        if (lfu.get(key, temp))
+        // if key in the lru ghost, lfu decrease capacity, lru increase capacity
+        // if key not in the lru ghost
+        bool isGhost = checkGhostCaches(key);
+        if (lfu->countain(key) || isGhost)
         {
-            lfu.put(key, value);
-            return;
+            lfu->put(key, value);
         }
-
-        // 2. Check LRU
-        bool needTransform = false;
-        if (lru.get(key, temp, needTransform))
+        else
         {
-            if (needTransform)
-            {
-                lru.remove(key);
-                lfu.increaseCapacity();
-                lru.decreaseCapacity();
-                lfu.put(key, value);
-            }
-            else
-            {
-                lru.put(key, value);
-            }
-            return;
+            lru->put(key, value);
         }
-
-        // 3. Check Ghosts (Adaptation)
-        if (lru.checkGhostCaches(key, temp))
-        {
-            lru.removeFromGhost(key);
-            lru.increaseCapacity();
-            lfu.decreaseCapacity();
-            lru.put(key, value);
-            return;
-        }
-        if (lfu.checkGhostCaches(key, temp))
-        {
-            lfu.removeFromGhost(key);
-            lfu.increaseCapacity();
-            lru.decreaseCapacity();
-            lfu.put(key, value);
-            return;
-        }
-
-        // 4. New Item
-        lru.put(key, value);
     }
 
-    bool get(Key key, Value &value) override
+    bool get(Key key, Value& value) override
     {
-        if (lfu.get(key, value)) return true;
-
-        bool needTransform = false;
-        if (lru.get(key, value, needTransform))
+        bool shouldTransform = false;
+        if (lru->get(key, value, shouldTransform))
         {
-            if (needTransform)
+            if (shouldTransform)
             {
-                lru.remove(key);
-                lfu.increaseCapacity();
-                lru.decreaseCapacity();
-                lfu.put(key, value);
+                lfu->put(key, value);
+                lru->remove(key);
             }
             return true;
         }
-        return false;
+        return lfu->get(key, value);
     }
-
     Value get(Key key) override
     {
         Value value{};
         get(key, value);
         return value;
+    }
+
+  private:
+    size_t capacity_;
+    size_t transformNeed_;
+    std::unique_ptr<ArcLru<Key, Value>> lru;
+    std::unique_ptr<ArcLfu<Key, Value>> lfu;
+
+  private:
+    bool checkGhostCaches(Key key)
+    {
+        // if lru ghost countain key,lfu decrease capacity, lru increase capacity
+        if (lru->ghostCountain(key))
+        {
+            lfu->decreaseCapacity();
+            lru->increaseCapacity();
+            return true;
+        }
+        if (lfu->ghostCountain(key))
+        {
+            lru->decreaseCapacity();
+            lfu->increaseCapacity();
+            return true;
+        }
+        return false;
     }
 };

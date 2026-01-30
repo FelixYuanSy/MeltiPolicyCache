@@ -17,15 +17,11 @@ class ArcLfu
                                                                      // frequncy which can match the Key
 
   public:
-    ArcLfu(size_t capacity, size_t ghostCapacity) : capacity_(capacity), ghostCapacity_(ghostCapacity), minFreq_(0)
-    {
-        initializeLists();
-    }
-    ArcLfu(size_t capacity) : ArcLfu(capacity, capacity) {}
+    ArcLfu(size_t capacity) : mainCapacity_(capacity), ghostCapacity_(capacity), minFreq_(0) { initializeLists(); }
 
     bool put(Key key, Value value)
     {
-        if (capacity_ == 0) return false;
+        if (mainCapacity_ == 0) return false;
 
         std::lock_guard<std::mutex> lock(mutex_);
         auto it = mainCache_.find(key);
@@ -48,41 +44,31 @@ class ArcLfu
         }
         return false;
     }
-
-    bool checkGhostCaches(Key key, Value& value)
-    {
-        std::lock_guard<std::mutex> lock(mutex_);
-        auto it = ghostCache_.find(key);
-        if (it != ghostCache_.end())
-        {
-            value = it->second->getValue();
-            return true;
-        }
-        return false;
-    }
-
+    
     void decreaseCapacity()
     {
-        if (capacity_ > 0) capacity_--;
-        while (mainCache_.size() > capacity_)
+        if(mainCache_.size()==mainCapacity_)
         {
             evictLeastFrequent();
         }
+        --mainCapacity_;
     }
-    void increaseCapacity() { ++capacity_; }
-    void removeFromGhost(Key key)
+    void increaseCapacity()
     {
-        std::lock_guard<std::mutex> lock(mutex_);
+        ++mainCapacity_;
+    }
+    bool ghostCountain(Key key)
+    {
         auto it = ghostCache_.find(key);
-        if (it != ghostCache_.end())
-        {
-            removeNode(it->second);
-            ghostCache_.erase(it);
-        }
+        return it != ghostCache_.end();
+    }
+    bool countain(Key key)
+    {
+       return mainCache_.find(key) != mainCache_.end();
     }
 
   private:
-    size_t capacity_;       // main cache total capacity
+    size_t mainCapacity_;       // main cache total capacity
     size_t ghostCapacity_;  // ghost cache capacity
     size_t minFreq_;        // minimal of the node frequency
     NodeMap mainCache_;
@@ -111,7 +97,7 @@ class ArcLfu
 
     bool addNewNode(Key key, Value value)
     {
-        if (mainCache_.size() >= capacity_)
+        if (mainCache_.size() >= mainCapacity_)
         {
             evictLeastFrequent();
         }

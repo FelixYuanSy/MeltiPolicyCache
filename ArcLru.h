@@ -15,7 +15,7 @@ class ArcLru
     using NodeMap = std::unordered_map<Key, NodePtr>;
 
   private:
-    int capacity_;       // total cache capacity
+    int mainCapacity_;   // total cache capacity
     int ghostCapacity_;  // ghost list capacity
     int transformNeed_;  // when access number over the need ,transfer to Lfu part
     NodeMap mainCache_;
@@ -26,8 +26,8 @@ class ArcLru
     NodePtr ghostTail_;
 
   public:
-    ArcLru(int capacity, int transformNeed, int ghostCapacity)
-        : capacity_(capacity), transformNeed_(transformNeed), ghostCapacity_(ghostCapacity)
+    ArcLru(int capacity, int transformNeed)
+        : mainCapacity_(capacity), transformNeed_((transformNeed)), ghostCapacity_(capacity)
     {
         initialize();
     }
@@ -36,7 +36,7 @@ class ArcLru
 
     bool put(Key key, Value value)
     {
-        if (capacity_ == 0) return false;
+        if (mainCapacity_ == 0) return false;
         auto it = mainCache_.find(key);
         if (it != mainCache_.end())
         {
@@ -44,6 +44,17 @@ class ArcLru
         }
         return addNewNode(key, value);
     }
+
+    void remove(Key key)
+    {
+        auto it = mainCache_.find(key);
+        if (it != mainCache_.end())
+        {
+            removeNode(it->second);
+            mainCache_.erase(it);
+        }
+    }
+
     // 返回一个bool来让后期的ARC判断是否需要把Node转换到LFU中
     bool get(Key key, Value &value, bool &NeedTransform)
     {
@@ -56,43 +67,22 @@ class ArcLru
         }
         return false;
     }
-    bool checkGhostCaches(Key key, Value &value)
+
+    bool ghostCountain(Key key)
     {
         auto it = ghostCache_.find(key);
-        if (it != ghostCache_.end())
-        {
-            value = it->second->getValue();
-            return true;
-        }
-        return false;
+        return it != ghostCache_.end();
     }
-    void increaseCapacity() { capacity_++; }
+
     void decreaseCapacity()
     {
-        if (capacity_ > 0) capacity_--;
-        while (mainCache_.size() > capacity_)
+        if (mainCache_.size() == mainCapacity_)
         {
             evictLeastRecent();
         }
+        --mainCapacity_;
     }
-    void remove(Key key)
-    {
-        auto it = mainCache_.find(key);
-        if (it != mainCache_.end())
-        {
-            removeNode(it->second);
-            mainCache_.erase(it);
-        }
-    }
-    void removeFromGhost(Key key)
-    {
-        auto it = ghostCache_.find(key);
-        if (it != ghostCache_.end())
-        {
-            removeNode(it->second);
-            ghostCache_.erase(it);
-        }
-    }
+    void increaseCapacity() { ++mainCapacity_; }
 
   private:
     void initialize()
@@ -122,7 +112,7 @@ class ArcLru
     }
     bool addNewNode(Key key, Value &value)
     {
-        if (mainCache_.size() >= capacity_)
+        if (mainCache_.size() >= mainCapacity_)
         {
             evictLeastRecent();
         }
