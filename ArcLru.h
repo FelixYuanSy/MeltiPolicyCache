@@ -31,9 +31,6 @@ class ArcLru
     {
         initialize();
     }
-    // 委托构造函数，默认 ghostCapacity = capacity
-    ArcLru(int capacity, int transformNeed) : ArcLru(capacity, transformNeed, capacity) {}
-
     bool put(Key key, Value value)
     {
         if (mainCapacity_ == 0) return false;
@@ -68,7 +65,7 @@ class ArcLru
         return false;
     }
 
-    bool ghostCountain(Key key)
+    bool ghostContain(Key key)
     {
         auto it = ghostCache_.find(key);
         return it != ghostCache_.end();

@@ -1,6 +1,7 @@
 #pragma once
 #include <cstddef>
 #include <memory>
+#include <mutex>
 
 #include "ArcLfu.h"
 #include "ArcLru.h"
@@ -20,6 +21,7 @@ class ArcCache : public MeltiCache::ICachePolicy<Key, Value>
     }
     void put(Key key, Value value) override
     {
+        std::lock_guard<std::mutex> lock(mutex_);
         // if key in the lru ghost, lfu decrease capacity, lru increase capacity
         // if key not in the lru ghost
         bool isGhost = checkGhostCaches(key);
@@ -35,6 +37,7 @@ class ArcCache : public MeltiCache::ICachePolicy<Key, Value>
 
     bool get(Key key, Value& value) override
     {
+        std::lock_guard<std::mutex> lock(mutex_);
         bool shouldTransform = false;
         if (lru->get(key, value, shouldTransform))
         {
@@ -59,12 +62,13 @@ class ArcCache : public MeltiCache::ICachePolicy<Key, Value>
     size_t transformNeed_;
     std::unique_ptr<ArcLru<Key, Value>> lru;
     std::unique_ptr<ArcLfu<Key, Value>> lfu;
+    std::mutex mutex_;
 
   private:
     bool checkGhostCaches(Key key)
     {
         // if lru ghost countain key,lfu decrease capacity, lru increase capacity
-        if (lru->ghostCountain(key))
+        if (lru->ghostContain(key))
         {
             lfu->decreaseCapacity();
             lru->increaseCapacity();
