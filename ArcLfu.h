@@ -57,7 +57,15 @@ class ArcLfu
     {
         ++mainCapacity_;
     }
-
+    bool ghostCountain(Key key)
+    {
+        auto it = ghostCache_.find(key);
+        return it != ghostCache_.end();
+    }
+    bool countain(Key key)
+    {
+       return mainCache_.find(key) != mainCache_.end();
+    }
 
   private:
     size_t mainCapacity_;       // main cache total capacity

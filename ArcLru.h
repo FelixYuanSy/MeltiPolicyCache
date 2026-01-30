@@ -15,7 +15,7 @@ class ArcLru
     using NodeMap = std::unordered_map<Key, NodePtr>;
 
   private:
-    int mainCapacity_;       // total cache capacity
+    int mainCapacity_;   // total cache capacity
     int ghostCapacity_;  // ghost list capacity
     int transformNeed_;  // when access number over the need ,transfer to Lfu part
     NodeMap mainCache_;
@@ -42,6 +42,17 @@ class ArcLru
         }
         return addNewNode(key, value);
     }
+
+    void remove(Key key)
+    {
+        auto it = mainCache_.find(key);
+        if (it != mainCache_.end())
+        {
+            removeNode(it->second);
+            mainCache_.erase(it);
+        }
+    }
+
     // 返回一个bool来让后期的ARC判断是否需要把Node转换到LFU中
     bool get(Key key, Value &value, bool &NeedTransform)
     {
@@ -63,16 +74,13 @@ class ArcLru
 
     void decreaseCapacity()
     {
-        if(mainCache_.size()==mainCapacity_)
+        if (mainCache_.size() == mainCapacity_)
         {
             evictLeastRecent();
         }
         --mainCapacity_;
     }
-    void increaseCapacity()
-    {
-        ++mainCapacity_;
-    }
+    void increaseCapacity() { ++mainCapacity_; }
 
   private:
     void initialize()
@@ -153,6 +161,6 @@ class ArcLru
             removeOldestGhost();
         }
         addToGhostFront(lastNode);
-        ghostCache_[lastNode->getKey()] = lastNode;  
+        ghostCache_[lastNode->getKey()] = lastNode;
     }
 };
