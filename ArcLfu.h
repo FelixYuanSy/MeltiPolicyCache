@@ -17,11 +17,11 @@ class ArcLfu
                                                                      // frequncy which can match the Key
 
   public:
-    ArcLfu(size_t capacity) : capacity_(capacity), ghostCapacity_(capacity), minFreq_(0) { initializeLists(); }
+    ArcLfu(size_t capacity) : mainCapacity_(capacity), ghostCapacity_(capacity), minFreq_(0) { initializeLists(); }
 
     bool put(Key key, Value value)
     {
-        if (capacity_ == 0) return false;
+        if (mainCapacity_ == 0) return false;
 
         std::lock_guard<std::mutex> lock(mutex_);
         auto it = mainCache_.find(key);
@@ -44,9 +44,23 @@ class ArcLfu
         }
         return false;
     }
+    
+    void decreaseCapacity()
+    {
+        if(mainCache_.size()==mainCapacity_)
+        {
+            evictLeastFrequent();
+        }
+        --mainCapacity_;
+    }
+    void increaseCapacity()
+    {
+        ++mainCapacity_;
+    }
+
 
   private:
-    size_t capacity_;       // main cache total capacity
+    size_t mainCapacity_;       // main cache total capacity
     size_t ghostCapacity_;  // ghost cache capacity
     size_t minFreq_;        // minimal of the node frequency
     NodeMap mainCache_;
@@ -75,7 +89,7 @@ class ArcLfu
 
     bool addNewNode(Key key, Value value)
     {
-        if (mainCache_.size() >= capacity_)
+        if (mainCache_.size() >= mainCapacity_)
         {
             evictLeastFrequent();
         }

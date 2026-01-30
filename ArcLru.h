@@ -15,7 +15,7 @@ class ArcLru
     using NodeMap = std::unordered_map<Key, NodePtr>;
 
   private:
-    int capacity_;       // total cache capacity
+    int mainCapacity_;       // total cache capacity
     int ghostCapacity_;  // ghost list capacity
     int transformNeed_;  // when access number over the need ,transfer to Lfu part
     NodeMap mainCache_;
@@ -27,14 +27,14 @@ class ArcLru
 
   public:
     ArcLru(int capacity, int transformNeed)
-        : capacity_(capacity), transformNeed_((transformNeed)), ghostCapacity_(capacity)
+        : mainCapacity_(capacity), transformNeed_((transformNeed)), ghostCapacity_(capacity)
     {
         initialize();
     }
 
     bool put(Key key, Value value)
     {
-        if (capacity_ == 0) return false;
+        if (mainCapacity_ == 0) return false;
         auto it = mainCache_.find(key);
         if (it != mainCache_.end())
         {
@@ -53,6 +53,25 @@ class ArcLru
             return true;
         }
         return false;
+    }
+
+    bool ghostCountain(Key key)
+    {
+        auto it = ghostCache_.find(key);
+        return it != ghostCache_.end();
+    }
+
+    void decreaseCapacity()
+    {
+        if(mainCache_.size()==mainCapacity_)
+        {
+            evictLeastRecent();
+        }
+        --mainCapacity_;
+    }
+    void increaseCapacity()
+    {
+        ++mainCapacity_;
     }
 
   private:
@@ -83,7 +102,7 @@ class ArcLru
     }
     bool addNewNode(Key key, Value &value)
     {
-        if (mainCache_.size() >= capacity_)
+        if (mainCache_.size() >= mainCapacity_)
         {
             evictLeastRecent();
         }
